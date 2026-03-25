@@ -1,0 +1,92 @@
+name: CI-CD
+
+on:
+  push:
+    branches:
+      - master
+
+env:
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+
+      - name: Build
+        working-directory: ./go-web-app
+        run: go build -o myapp
+
+      - name: Test
+        working-directory: ./go-web-app
+        run: go test ./...
+
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up GolangCI-Lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          working-directory: ./go-web-app
+        
+
+  push-to-amazon-ecr:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+        - name: Checkout code
+          uses: actions/checkout@v4
+
+        - name: Configure AWS credentials
+          uses: aws-actions/configure-aws-credentials@v4
+          with:
+            role-to-assume: arn:aws:iam::123456789012:role/my-github-actions-role
+            aws-region: us-east-1
+            mask-aws-account-id: 'false'
+
+        - name: Login to Amazon ECR
+          id: login-ecr
+          uses: aws-actions/amazon-ecr-login@v2
+
+        - name: Build, tag, and push docker image to Amazon ECR
+          env:
+            REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+            REPOSITORY: my-ecr
+            IMAGE_TAG: ${{ github.sha }}
+          run: |
+            docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
+            docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+  
+  update-newtag-in-helm:
+    runs-on: ubuntu-latest
+    needs: push-to-amazon-ecr
+    steps:
+      - name: Checkout Helm Repository
+        uses: actions/checkout@v4
+        with: 
+          repository: ariefshaik7/helm-charts
+          token: ${{ secrets.TOKEN }}
+      
+      - name: Update new tag in Helm chart
+        run: |
+          sed -i "s/tag: .*/tag: '${{ github.sha }}'/" go-web-app-chart/values.yaml
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "ariefshaik001@gmail.com"
+          git config --local user.name "ariefshaik7"
+          git add go-web-app-chart/values.yaml
+          git commit -m "Update Helm chart with new tag ${{ env.IMAGE_TAG}}"
+          git push
+          
