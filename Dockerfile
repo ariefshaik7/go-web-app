@@ -2,11 +2,11 @@ FROM golang:1.22 AS base
 
 WORKDIR /app
 
-COPY go-web-app/go.mod ./
+COPY go.mod ./
 
 RUN go mod download
 
-COPY go-web-app/. .
+COPY . .
 
 RUN go build -o main .
 
