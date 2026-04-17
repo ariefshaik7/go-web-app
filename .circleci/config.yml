@@ -1,0 +1,26 @@
+version: 2.1
+
+orbs:
+  go: circleci/go@3.0.2
+
+jobs:
+  build_and_test: 
+    executor:
+      name: go/default 
+      tag: '1.22' 
+    steps:
+      - checkout 
+      - go/mod-download 
+      - go/test: 
+          covermode: atomic
+          failfast: true
+          race: true
+      - persist_to_workspace:
+          root: .
+          paths: .
+
+workflows:
+  build_test:
+    jobs:
+      - build_and_test
+
